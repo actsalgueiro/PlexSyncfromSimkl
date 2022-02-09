@@ -127,3 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Other
+simkl_api_id.txt
+simkl_tokens/*
+anime-list.xml
