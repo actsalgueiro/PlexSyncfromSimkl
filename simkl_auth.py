@@ -73,4 +73,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--simkl', required=True)
     opts = parser.parse_args()
-    main(opts.username)
+    main(opts.simkl)
