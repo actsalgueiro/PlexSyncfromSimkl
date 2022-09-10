@@ -129,6 +129,4 @@ dmypy.json
 .pyre/
 
 # Other
-simkl_api_id.txt
-simkl_tokens/*
-anime-list.xml
+resources/

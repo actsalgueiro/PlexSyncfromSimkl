@@ -8,17 +8,20 @@ import time
 import xml.etree.ElementTree as ET
 from plexapi.server import PlexServer
 from datetime import datetime, timezone
+from dotenv import load_dotenv
 
-# example http://192.168.1.XXX:32400
-PLEXURL = ''
+load_dotenv()
+
+# example http://<server-ip>:<server-port>
+PLEXURL = os.getenv('PLEXURL')
 # https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/
-PLEXTOKEN = ''
+PLEXTOKEN = os.getenv('PLEXTOKEN')
 
 filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'anime-list.xml')
 
 def getScudLee():
-    # create element tree object from ScudLee XML
-    # get ScudLee XML from github
+    """Update ScudLee XML from github
+    """
     if not os.path.exists(filepath):
         scudleeXML = requests.get("https://raw.githubusercontent.com/Anime-Lists/anime-lists/master/anime-list.xml")
         with open(filepath, "wb") as f:
@@ -32,8 +35,6 @@ def getScudLee():
                     f.write(scudleeXML.content)
         except OSError:
             scudleeXML = requests.get("https://raw.githubusercontent.com/Anime-Lists/anime-lists/master/anime-list.xml")
-            with open(filepath, "wb") as f:
-                f.write(scudleeXML.content)
 
 def anidbToTvdb(anidbid, episode=None):
     """Convert the Tvdb anime info into Anidb info
@@ -95,79 +96,82 @@ def updateWatchedState(guidLookup, plexLIB, allItems):
     # if video.title.lower() in animeshow["show"]["title"].lower():
     # print(video.title, " matched ", animeshow["show"]["title"])
     # Update Animes
-    for animeshow in allItems["anime"]:
-        completed = True if animeshow["status"] == "completed" else False
-        ep_watched = int(animeshow["watched_episodes_count"])
-        anidbid = animeshow["show"]["ids"]["anidb"]
-        title = animeshow["show"]["title"]
-        
-        tmdbid = tvdbid = 0
-
-        # Search for IDs in simkl
-        if "tmdb" in animeshow["show"]["ids"]:
-            tmdbid = animeshow["show"]["ids"]["tmdb"]
-        elif animeshow["anime_type"] == "movie":
-            tmdbid = anidbToTvdb(anidbid)
-        if "tvdb" in animeshow["show"]["ids"]:
-            tvdbid = animeshow["show"]["ids"]["tvdb"]
-        elif animeshow["anime_type"] == "tv":
-            tvdbid = anidbToTvdb(anidbid)
+    if "anime" in allItems:
+        for animeshow in allItems["anime"]:
+            completed = True if animeshow["status"] == "completed" else False
+            ep_watched = int(animeshow["watched_episodes_count"])
+            anidbid = animeshow["show"]["ids"]["anidb"]
+            title = animeshow["show"]["title"]
             
-        print (f"Searching for {title} in plex with anidbid: {anidbid} matching tvdb-{tvdbid} or tmdb-{tmdbid}")
-        # Look for the show in plex
-        if f"tvdb://{tvdbid}" in guidLookup:
-            # Mark each episode until last ep watched
-            for i in range(1, ep_watched+1):
-                tvdbid, season, episode = anidbToTvdb(anidbid, i)
-                try:
-                    if tvdbid:
-                        plexLIB.getGuid(f"tvdb://{tvdbid}").episode(season=season, episode=episode).markWatched()
-                        print(f"marked as watched ep{episode} for season {season} with anidb {anidbid}")
-                    else:
-                        print(f"\033[93mShow {title} is unsupported\033[0m")
-                        break
-                except:
-                    print(f"\033[93mEpisode {episode} for season {season} NOT FOUND\033[0m")
-        # Handle Anime Movies since Simkl as them as Anime
-        if f"tmdb://{tmdbid}" in guidLookup and completed and animeshow["anime_type"] == "movie":
-            print(f"marking movie {title} as watched with tmdbid: {tmdbid}")
-            plexLIB.getGuid(f"tmdb://{tmdbid}").markWatched()
+            tmdbid = tvdbid = 0
+
+            # Search for IDs in simkl
+            if "tmdb" in animeshow["show"]["ids"]:
+                tmdbid = animeshow["show"]["ids"]["tmdb"]
+            elif animeshow["anime_type"] == "movie":
+                tmdbid = anidbToTvdb(anidbid)
+            if "tvdb" in animeshow["show"]["ids"]:
+                tvdbid = animeshow["show"]["ids"]["tvdb"]
+            elif animeshow["anime_type"] == "tv":
+                tvdbid = anidbToTvdb(anidbid)
+                
+            print (f"Searching for {title} in plex with anidbid: {anidbid} matching tvdb-{tvdbid} or tmdb-{tmdbid}")
+            # Look for the show in plex
+            if f"tvdb://{tvdbid}" in guidLookup:
+                # Mark each episode until last ep watched
+                for i in range(1, ep_watched+1):
+                    tvdbid, season, episode = anidbToTvdb(anidbid, i)
+                    try:
+                        if tvdbid:
+                            guidLookup[f"tvdb://{tvdbid}"].episode(season=season, episode=episode).markWatched()
+                            print(f"marked as watched ep{episode} for season {season} with anidb {anidbid}")
+                        else:
+                            print(f"\033[93mShow {title} is unsupported\033[0m")
+                            break
+                    except:
+                        print(f"\033[93mEpisode {episode} for season {season} NOT FOUND\033[0m")
+            # Handle Anime Movies since Simkl as them as Anime
+            if f"tmdb://{tmdbid}" in guidLookup and completed and animeshow["anime_type"] == "movie":
+                print(f"marking movie {title} as watched with tmdbid: {tmdbid}")
+                guidLookup[f"tmdb://{tmdbid}"].markWatched()
 
     # Update TV Shows
-    for tvshow in allItems["shows"]:
-        completed = True if tvshow["status"] == "completed" else False
-        if int(tvshow["watched_episodes_count"]) > 0:
-            lastseason = int(tvshow["last_watched"].split('E')[0][1:])
-            lastepisode = int(tvshow["last_watched"].split('E')[1])
-        else:
-            lastseason = lastepisode = 0
-        tvdbid = tvshow["show"]["ids"]["tvdb"]
-        title = tvshow["show"]["title"]
-        print (f"Searching for {title} in plex with tvdbid: {tvdbid}")
-        # Look for the show in plex
-        if f"tvdb://{tvdbid}" in guidLookup:
-            # If the show is completed, dont look at episodes and just mark everything as watched
-            if completed:
-                plexLIB.getGuid(f"tvdb://{tvdbid}").markWatched()
-                print(f"marking entire show {title} as watched with tvdbid: {tvdbid}")
+    if "shows" in allItems:
+        for tvshow in allItems["shows"]:
+            completed = True if tvshow["status"] == "completed" else False
+            if int(tvshow["watched_episodes_count"]) > 0:
+                lastseason = int(tvshow["last_watched"].split('E')[0][1:])
+                lastepisode = int(tvshow["last_watched"].split('E')[1])
             else:
-            # Mark each episode of every season until last ep watched
-                for season in range(1, lastseason+1):
-                    for episode in range(1, lastepisode+1):
-                        try:
-                            plexLIB.getGuid(f"tvdb://{tvdbid}").episode(season=season, episode=episode).markWatched()
-                            print(f"marked as watched ep{episode} for season {season} with tvdb {tvdbid}")
-                        except:
-                            print(f"\033[93mEpisode {episode} for season {season} NOT FOUND\033[0m")
+                lastseason = lastepisode = 0
+            tvdbid = tvshow["show"]["ids"]["tvdb"]
+            title = tvshow["show"]["title"]
+            print (f"Searching for {title} in plex with tvdbid: {tvdbid}")
+            # Look for the show in plex
+            if f"tvdb://{tvdbid}" in guidLookup:
+                # If the show is completed, dont look at episodes and just mark everything as watched
+                if completed:
+                    guidLookup[f"tvdb://{tvdbid}"].markWatched()
+                    print(f"marking entire show {title} as watched with tvdbid: {tvdbid}")
+                else:
+                # Mark each episode of every season until last ep watched
+                    for season in range(1, lastseason+1):
+                        for episode in range(1, lastepisode+1):
+                            try:
+                                guidLookup[f"tvdb://{tvdbid}"].episode(season=season, episode=episode).markWatched()
+                                print(f"marked as watched ep{episode} for season {season} with tvdb {tvdbid}")
+                            except:
+                                print(f"\033[93mEpisode {episode} for season {season} NOT FOUND\033[0m")
     # Update Movies
-    for movie in allItems["movies"]:
-        completed = True if movie["status"] == "completed" else False
-        tmdbid = movie["movie"]["ids"]["tmdb"]
-        title = movie["movie"]["title"]
-        print (f"Searching for {title} in plex with anidbid: {anidbid}")
-        if f"tmdb://{tmdbid}" in guidLookup and completed:
-            print(f"marking movie {title} as watched with tmdbid: {tmdbid}")
-            plexLIB.getGuid(f"tmdb://{tmdbid}").markWatched()
+    if "movies" in allItems:
+        for movie in allItems["movies"]:
+            completed = True if movie["status"] == "completed" else False
+            tmdbid = movie["movie"]["ids"]["tmdb"]
+            title = movie["movie"]["title"]
+            print (f"Searching for {title} in plex with tmdbid: {tmdbid}")
+            if f"tmdb://{tmdbid}" in guidLookup and completed:
+                print(f"marking movie {title} as watched with tmdbid: {tmdbid}")
+                guidLookup[f"tmdb://{tmdbid}"].markWatched()
 
 def get_simkl_token_for_user(simkluser):
     filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'simkl_tokens', f'{simkluser}.txt')
@@ -219,6 +223,11 @@ def main(simkluser, plexuser):
         plex = PlexServer(PLEXURL, PLEXTOKEN)
         # Switch plex login to user account
         # plex = plex.switchUser(plexuser)
+        if plexuser:
+            account = plex.myPlexAccount()
+            user_acct = account.user(plexuser)
+            plex = PlexServer(PLEXURL, user_acct.get_token(plex.machineIdentifier))
+            print ("user")
     except Exception as e: 
         print(e)
         return 0
@@ -226,13 +235,23 @@ def main(simkluser, plexuser):
     # Get Simkl Data
     allItems = getSimklWatched(simkluser)
 
+    with open(f"{plexuser}.json", "w") as simkldata:
+        json.dump(allItems, simkldata, indent=4, sort_keys=True)
+
+    
+    print (plex.library.sections())
+
     # Get Plex Data
-    # plexLIB = plex.library.section('TV')
+    # plexLIB = plex.library.section('Anime')
     # guidLookup = {guid.id: item for item in plexLIB.all() for guid in item.guids}
-    # print(plexLIB.getGuid("tvdb://362696").episode(season=2, episode=1))
+    
+    # print (guidLookup)
+    # print(plexLIB.getGuid("tvdb://353712"))
+    # print(guidLookup["tvdb://353712"].episode(season=2, episode=1))
+    # guidLookup["tvdb://353712"].episode(season=2, episode=1).markWatched()
 
     # print (plex.library.sections())
-
+    # return
     for section in plex.library.sections():
         if section.type in ['movie', 'show']:
             print (f"\n\nSYNC {section.title}\n\n")

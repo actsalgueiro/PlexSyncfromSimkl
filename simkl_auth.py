@@ -4,6 +4,9 @@ import time
 import pathlib
 import os
 import argparse
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def get_PIN_code(userid):
     url = f"https://api.simkl.com/oauth/pin?client_id={userid}"
@@ -40,16 +43,7 @@ def retrieveToken(user_code, expires_in, interval, userid):
 def main(simkluser):
     filepath = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'simkl_api_id.txt')
 
-    try:
-        with open(filepath) as f:
-            simkl_client_id = f.readline().strip()
-    except:
-        print(f"No file named simkl_api_id.txt. Please create a file named simkl_api_id.txt and write the api id inside.")
-        return
-
-    if not simkl_client_id:
-        print("No simkl api client id found. Please create a file named simkl_api_id.txt and write the api id inside.")
-        return
+    simkl_client_id = os.getenv('SIMKL_CLIENTID')
 
     headers = {
         'Content-Type': 'application/json'
